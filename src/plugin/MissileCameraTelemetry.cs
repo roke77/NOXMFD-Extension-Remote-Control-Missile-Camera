@@ -16,6 +16,11 @@ namespace RcMissileCamera
     // browser-side generic listener registration lands, switch this back to PublishEvent.
     internal static class MissileCameraTelemetry
     {
+        private static float _nextMarkersTime;
+        private static float _nextPoolTime;
+        private static string _cachedMarkers = "[]";
+        private static IReadOnlyList<string> _cachedPool = System.Array.Empty<string>();
+
         internal static void Publish(RcFeed feed)
         {
             NOXMFD.Api.PublishSlice(Plugin.ExtId, Build(feed));
@@ -23,28 +28,59 @@ namespace RcMissileCamera
 
         private static string Build(RcFeed feed)
         {
-            if (!RcBridge.Available) return "{\"available\":false}";
+            bool mc = McBridge.Available;
+            bool rc = RcBridge.Available;
+            if (!mc && !rc)
+                return "{\"available\":false}";
+
+            // Pipeline gate (TAKE / "camera active") — bridge capture counts, not cockpit MFD overlay.
+            bool fsActive = McBridge.IsCaptureActive
+                || (rc ? RcBridge.IsFullscreenActive : McBridge.HasTrackableMissile);
 
             // "tele"/"markers" are spliced in verbatim (see McBridge.TelemetryJson/MarkersJson)
-            // rather than built via string.Format — they're already valid, pre-escaped JSON
-            // straight from the base MissileCamera mod, and re-threading their fields through
-            // format args here would just be a second, easier-to-drift copy.
             string tele = string.IsNullOrEmpty(McBridge.TelemetryJson) ? "null" : McBridge.TelemetryJson!;
-            string markers = string.IsNullOrEmpty(McBridge.MarkersJson) ? "[]" : McBridge.MarkersJson;
-            UnityEngine.Vector2 reticle = RcBridge.ReticleViewport;
+
+            float now = UnityEngine.Time.unscaledTime;
+            if (now >= _nextMarkersTime)
+            {
+                _cachedMarkers = string.IsNullOrEmpty(McBridge.MarkersJson) ? "[]" : McBridge.MarkersJson;
+                _nextMarkersTime = now + UnityEngine.Mathf.Clamp(McBridge.MarkersInterval, 0.05f, 1f);
+            }
+
+            if (rc && now >= _nextPoolTime)
+            {
+                _cachedPool = RcBridge.ControllablePool;
+                _nextPoolTime = now + UnityEngine.Mathf.Clamp(McBridge.PoolInterval, 0.1f, 2f);
+            }
+
+            string markers = _cachedMarkers;
+            UnityEngine.Vector2 reticle = rc ? RcBridge.ReticleViewport : new UnityEngine.Vector2(0.5f, 0.5f);
+
+            bool controlling = rc && RcBridge.IsControlling;
+            if (!McBridge.HasTrackableMissile && !controlling)
+            {
+                return string.Format(CultureInfo.InvariantCulture,
+                    "{{\"available\":true,\"rcReady\":{0},\"fsActive\":false,\"hasFrame\":false," +
+                    "\"controlling\":false,\"missile\":\"\",\"thr\":0,\"boost\":false,\"link\":\"\"," +
+                    "\"formation\":false,\"pool\":[],\"aimX\":0.5,\"aimY\":0.5,\"tele\":null,\"markers\":[]}}",
+                    rc ? "true" : "false");
+            }
 
             return string.Format(CultureInfo.InvariantCulture,
-                "{{\"available\":true,\"fsActive\":{0},\"controlling\":{1},\"missile\":\"{2}\"," +
-                "\"thr\":{3:0.000},\"boost\":{4},\"link\":\"{5}\",\"formation\":{6},\"pool\":{7}," +
-                "\"aimX\":{8:0.000},\"aimY\":{9:0.000},\"tele\":{10},\"markers\":{11}}}",
+                "{{\"available\":true,\"rcReady\":{0},\"fsActive\":{1},\"hasFrame\":{2}," +
+                "\"controlling\":{3},\"missile\":\"{4}\",\"thr\":{5:0.000},\"boost\":{6}," +
+                "\"link\":\"{7}\",\"formation\":{8},\"pool\":{9},\"aimX\":{10:0.000},\"aimY\":{11:0.000}," +
+                "\"tele\":{12},\"markers\":{13}}}",
+                rc ? "true" : "false",
+                fsActive ? "true" : "false",
                 feed.Active ? "true" : "false",
-                RcBridge.IsControlling ? "true" : "false",
-                Escape(RcBridge.ControlledMissileName ?? string.Empty),
-                RcBridge.Throttle01,
-                RcBridge.BoostActive ? "true" : "false",
-                Escape(RcBridge.LinkQuality ?? string.Empty),
-                RcBridge.FormationFollowActive ? "true" : "false",
-                StringArray(RcBridge.ControllablePool),
+                controlling ? "true" : "false",
+                Escape(rc ? (RcBridge.ControlledMissileName ?? string.Empty) : string.Empty),
+                rc ? RcBridge.Throttle01 : 0f,
+                rc && RcBridge.BoostActive ? "true" : "false",
+                Escape(rc ? (RcBridge.LinkQuality ?? string.Empty) : string.Empty),
+                rc && RcBridge.FormationFollowActive ? "true" : "false",
+                rc ? StringArray(_cachedPool) : "[]",
                 reticle.x, reticle.y,
                 tele, markers);
         }

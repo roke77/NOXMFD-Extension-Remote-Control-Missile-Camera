@@ -1,14 +1,4 @@
-// MISSILE CAMERA page — Missile Camera: Remote Control feed + controls. See missile-camera.html
-// for the full message contract: shell -> page is the standard extension contract every NOXMFD
-// extension's page gets ({mfd:true, type:'ext', data:{...}}, docs/extensions-api.md); page -> game
-// POSTs straight to this extension's own /ext/rc-missile-camera/command (MissileCameraCommands.cs)
-// — not NOXMFD's shared send-command.js/CommandEnvelope, since this extension owns both ends of
-// that shape itself.
-//
-// Unlike TGP (pure reactive renderer) this page also OWNS input: a drag-to-aim pointer surface
-// over the feed, plus a few buttons. Aim deltas are batched on a short timer rather than sent per
-// pointermove — same reasoning as the physical mouse (PollMouse accumulates a frame's motion,
-// not each OS mouse-move event), and it keeps this to a handful of POSTs/sec instead of hundreds.
+// MISSILE CAMERA page — Missile Camera: Remote Control feed + controls.
 
 function postCmd(cmd, args) {
   return fetch('/ext/rc-missile-camera/command', {
@@ -46,35 +36,115 @@ const rcTeleTgtAngle = document.getElementById('rc-tele-tgtangle');
 const rcTeleTti = document.getElementById('rc-tele-tti');
 const rcMarkersEl = document.getElementById('rc-markers');
 
-// Last known status block, so button handlers (which fire outside the message handler) can read
-// current state without their own bookkeeping.
-let state = { available: false, fsActive: false, controlling: false, formation: false, pool: [] };
+let state = { available: false, rcReady: false, fsActive: false, hasFrame: false, controlling: false, formation: false, pool: [] };
+let poolRefreshed = false;
 
-// MJPEG fires 'load' only once, so it can't detect a stall — but 'error' still covers the hard
-// case where the connection breaks outright (network blip, backgrounded tab, server-side
-// disconnect). <img> never retries a stream on its own, so without this the feed stays dead
-// until the whole page is reloaded — reopen the connection ourselves instead.
+// ── MJPEG reconnect + stall watchdog ────────────────────────────────────────────────
 let rcFeedRetryCount = 0;
 let rcFeedRetryTimer = null;
+let rcFeedLastFrameAt = Date.now();
+const RC_FEED_STALL_MS = 4000;
+const RC_FEED_URL = '/ext/rc-missile-camera/feed.mjpg';
+
+function stopRcFeed() {
+  if (rcFeedRetryTimer) {
+    clearTimeout(rcFeedRetryTimer);
+    rcFeedRetryTimer = null;
+  }
+  rcImg.removeAttribute('src');
+  rcPanel.classList.remove('has-feed');
+  rcMarkersEl.innerHTML = '';
+}
+
+function startRcFeed() {
+  if (rcImg.getAttribute('src')) return;
+  rcImg.src = RC_FEED_URL;
+}
+
 function scheduleRcFeedRetry() {
-  if (rcFeedRetryTimer) return;
+  if (rcFeedRetryTimer || document.visibilityState !== 'visible') return;
   rcFeedRetryTimer = setTimeout(function () {
     rcFeedRetryTimer = null;
-    rcImg.src = '/ext/rc-missile-camera/feed.mjpg?r=' + (++rcFeedRetryCount);
+    rcImg.src = RC_FEED_URL + '?r=' + (++rcFeedRetryCount);
   }, 1200);
 }
-rcImg.src = '/ext/rc-missile-camera/feed.mjpg';
+
+function syncRcPageVisibility() {
+  if (document.visibilityState === 'visible') startRcFeed();
+  else stopRcFeed();
+}
+
+document.addEventListener('visibilitychange', syncRcPageVisibility);
+window.addEventListener('pagehide', stopRcFeed);
+syncRcPageVisibility();
 rcImg.addEventListener('error', function() {
   rcPanel.classList.remove('has-feed');
   scheduleRcFeedRetry();
 });
+setInterval(function() {
+  if (!state.available || !state.hasFrame) return;
+  if (Date.now() - rcFeedLastFrameAt > RC_FEED_STALL_MS) {
+    rcFeedLastFrameAt = Date.now();
+    scheduleRcFeedRetry();
+  }
+}, 1000);
+
+// Map Unity viewport (0..1, y=bottom) onto object-fit:contain letterbox inside rc-surface.
+function imgLetterboxInSurface() {
+  const sw = rcSurface.clientWidth;
+  const sh = rcSurface.clientHeight;
+  if (sw < 2 || sh < 2) return { x: 0, y: 0, w: sw, h: sh };
+  const nw = rcImg.naturalWidth > 0 ? rcImg.naturalWidth : 16;
+  const nh = rcImg.naturalHeight > 0 ? rcImg.naturalHeight : 9;
+  const ia = nw / nh;
+  const sa = sw / sh;
+  let w, h, x, y;
+  if (ia > sa) {
+    w = sw;
+    h = w / ia;
+    x = 0;
+    y = (sh - h) * 0.5;
+  } else {
+    h = sh;
+    w = h * ia;
+    x = (sw - w) * 0.5;
+    y = 0;
+  }
+  return { x: x, y: y, w: w, h: h };
+}
+
+function overlayPx(vx, vy) {
+  const box = imgLetterboxInSurface();
+  return {
+    left: (box.x + vx * box.w) + 'px',
+    top: (box.y + (1 - vy) * box.h) + 'px'
+  };
+}
+
+function placeOverlay(el, vx, vy) {
+  const p = overlayPx(vx, vy);
+  el.style.left = p.left;
+  el.style.top = p.top;
+}
+
+// Re-seat overlays when the pane resizes or a new MJPEG frame arrives.
+window.addEventListener('resize', function() {
+  if (typeof state.aimX === 'number' && typeof state.aimY === 'number') {
+    placeOverlay(rcReticle, state.aimX, state.aimY);
+  }
+});
+rcImg.addEventListener('load', function() {
+  rcFeedLastFrameAt = Date.now();
+  rcFeedRetryCount = 0;
+  if (state.markers && state.markers.length) renderMarkers(state.markers);
+  if (typeof state.aimX === 'number' && typeof state.aimY === 'number') {
+    placeOverlay(rcReticle, state.aimX, state.aimY);
+  }
+});
 
 // ── Aim drag ────────────────────────────────────────────────────────────────────────
-// Degrees per CSS pixel of drag — tuned to feel roughly like the in-cockpit mouse sensitivity
-// at default game settings; the RC bind is itself a slew rate, not a fixed mapping, so this is
-// a starting point rather than a precise conversion. Adjust here if it feels too twitchy/slow.
 const AIM_DEG_PER_PX = 0.15;
-const AIM_SEND_MS = 40;   // ~25 Hz — smooth without flooding the command endpoint
+const AIM_SEND_MS = 40;
 
 let dragging = false;
 let lastX = 0, lastY = 0;
@@ -95,7 +165,7 @@ rcSurface.addEventListener('pointermove', function(e) {
   lastX = e.clientX;
   lastY = e.clientY;
   pendingYaw   += dx * AIM_DEG_PER_PX;
-  pendingPitch += dy * AIM_DEG_PER_PX;   // screen-down == pitch-up-negative, matches RcBridge's convention
+  pendingPitch += dy * AIM_DEG_PER_PX;
 });
 
 function endDrag(e) {
@@ -134,26 +204,19 @@ rcThrDown.addEventListener('click', function() {
   postCmd('throttle-adjust', { v: -0.1 }).catch(function() {});
 });
 
-// Afterburner is a hold, not a tap — mirrors the physical keybind's level-triggered behavior
-// (ThrottleController.SetExternalBoost). Pointer events cover mouse + touch uniformly.
-rcBoostBtn.addEventListener('pointerdown', function() {
-  postCmd('boost', { on: true }).catch(function() {});
+rcBoostBtn.addEventListener('click', function() {
+  if (!state.controlling) return;
+  postCmd('boost', { on: !state.boost }).catch(function() {});
 });
-function releaseBoost() {
-  postCmd('boost', { on: false }).catch(function() {});
-}
-rcBoostBtn.addEventListener('pointerup', releaseBoost);
-rcBoostBtn.addEventListener('pointercancel', releaseBoost);
-rcBoostBtn.addEventListener('pointerleave', releaseBoost);
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState !== 'visible' && state.boost) {
+    postCmd('boost', { on: false }).catch(function() {});
+  }
+});
 
-// Manual detonate is irreversible — require a deliberate ~600 ms press-and-hold rather than a
-// single tap, the same way a cockpit guard flap makes a critical action hard to fat-finger.
 const DETONATE_HOLD_MS = 600;
 let detonateTimer = null;
 rcDetBtn.addEventListener('pointerdown', function(e) {
-  // Without this, iOS Safari's own long-press gesture (context menu / text-selection callout,
-  // ~500-750ms) can race the hold timer below and steal the pointer sequence — touch-action/
-  // -webkit-touch-callout in missile-camera.css cover the CSS half, this covers the event itself.
   e.preventDefault();
   rcDetBtn.classList.add('on');
   detonateTimer = setTimeout(function() {
@@ -169,12 +232,9 @@ rcDetBtn.addEventListener('pointerup', cancelDetonate);
 rcDetBtn.addEventListener('pointercancel', cancelDetonate);
 rcDetBtn.addEventListener('pointerleave', cancelDetonate);
 
-// ── Missile picker ──────────────────────────────────────────────────────────────────
-// Only worth showing while nothing is under control — once controlling, TAKE targets "next
-// best" and the picker would just be a second, redundant way to do the same thing.
 function renderPool(pool) {
   rcPoolEl.innerHTML = '';
-  if (state.controlling || !pool || pool.length === 0) return;
+  if (state.controlling || !state.rcReady || !pool || pool.length === 0) return;
   pool.forEach(function(name, i) {
     const item = document.createElement('div');
     item.className = 'rc-pool-item';
@@ -186,18 +246,23 @@ function renderPool(pool) {
   });
 }
 
-// ── Telemetry readout ───────────────────────────────────────────────────────────────
-// Mirrors the base MissileCamera mod's own Fullscreen HUD text 1:1 — these are already
-// formatted (units, rounding) server-side, so this just places them, no reformatting.
 function renderTele(tele) {
-  const has = !!tele;
+  const has = !!(tele && (tele.missile || tele.speed));
   rcPanel.classList.toggle('has-tele', has);
 
-  // visionMode rides even in the "no trackable missile" partial object (see McBridge.cs
-  // TelemetryJson) — it's a global selection, not missile-specific — so update the button
-  // regardless of `has`, and bail only for the fields that genuinely need a missile.
-  rcVisionBtn.textContent = (has && tele.visionMode) ? tele.visionMode.replace(/^MODE:\s*/, 'VIS ') : 'VIS';
-  if (!has) return;
+  rcVisionBtn.textContent = (tele && tele.visionMode) ? tele.visionMode.replace(/^MODE:\s*/, 'VIS ') : 'VIS';
+  if (!has) {
+    rcTeleSpd.textContent = '';
+    rcTeleAlt.textContent = '';
+    rcTeleRng.textContent = '';
+    rcTeleFuel.textContent = '';
+    rcTeleMach.textContent = '';
+    rcTeleG.textContent = '';
+    rcTeleGuid.textContent = '';
+    rcTeleTgtAngle.textContent = '';
+    rcTeleTti.textContent = '';
+    return;
+  }
 
   rcTeleSpd.textContent = tele.speed || '';
   rcTeleAlt.textContent = tele.alt || '';
@@ -215,11 +280,6 @@ function renderTele(tele) {
   }
 }
 
-// ── Target markers ──────────────────────────────────────────────────────────────────
-// Cockpit HUD markers reprojected onto the feed camera (see missile-camera.html's "markers" doc) — same
-// viewport-flip reasoning as the aim reticle below. Full clear+rebuild each update: marker
-// counts are small (a handful of contacts), and this rides the normal telemetry rate — no need
-// to diff.
 function renderMarkers(markers) {
   rcMarkersEl.innerHTML = '';
   if (!markers || markers.length === 0) return;
@@ -227,8 +287,7 @@ function renderMarkers(markers) {
   markers.forEach(function(m) {
     const el = document.createElement('div');
     el.className = 'rc-marker' + (m.sel ? ' selected' : '');
-    el.style.left = (m.x * 100) + '%';
-    el.style.top = ((1 - m.y) * 100) + '%';
+    placeOverlay(el, m.x, m.y);
     el.style.color = m.c || '#ffffff';
 
     if (m.n) {
@@ -242,20 +301,27 @@ function renderMarkers(markers) {
   });
 }
 
-// ── Status rendering ────────────────────────────────────────────────────────────────
 function applyRcState(m) {
   state = m;
 
   rcPanel.classList.toggle('has-rc', !!m.available);
-  rcPanel.classList.toggle('has-feed', !!m.fsActive);
+  rcPanel.classList.toggle('rc-ready', !!m.rcReady);
+  rcPanel.classList.toggle('has-feed', !!m.hasFrame);
 
   if (!m.available) {
-    // Not "NOT INSTALLED" — this flips false any time the plugin-side bridge isn't reporting
-    // live right now (still resolving after boot, or genuinely absent), and the browser has no
-    // way to tell those apart. Treat it as a signal-loss state, not a diagnosis.
     rcEmptyMsg.textContent = '— NO SIGNAL —';
+    poolRefreshed = false;
   } else if (!m.fsActive) {
     rcEmptyMsg.textContent = '— CAMERA NOT ACTIVE —';
+  } else if (!m.rcReady) {
+    rcEmptyMsg.textContent = '— PREVIEW ONLY (RC NOT READY) —';
+  } else {
+    rcEmptyMsg.textContent = '';
+  }
+
+  if (m.available && m.rcReady && !poolRefreshed) {
+    poolRefreshed = true;
+    postCmd('refresh-pool', {}).catch(function() {});
   }
 
   rcMissile.textContent = m.controlling ? (m.missile || '') : '';
@@ -269,26 +335,28 @@ function applyRcState(m) {
   rcThrFill.style.height = Math.round((m.thr || 0) * 100) + '%';
   rcBoostBtn.classList.toggle('on', !!m.boost);
 
-  rcTakeBtn.disabled = !m.fsActive || m.controlling;
+  rcTakeBtn.disabled = !m.rcReady || !m.fsActive || m.controlling;
   rcReleaseBtn.disabled = !m.controlling;
   rcFormBtn.disabled = !m.controlling;
   rcDetBtn.disabled = !m.controlling;
 
-  // RcBridge.ReticleViewport uses Unity's viewport convention (0 = bottom, 1 = top — same as
-  // Camera.WorldToViewportPoint), but CSS `top` counts from the top of the box. Flip Y here;
-  // X needs no flip (both conventions agree left→right). Rides the normal 10 Hz slice — see the
-  // ponytail note in MissileCameraTelemetry.cs for why this isn't a dedicated high-rate channel (yet).
   if (typeof m.aimX === 'number' && typeof m.aimY === 'number') {
-    rcReticle.style.left = (m.aimX * 100) + '%';
-    rcReticle.style.top  = ((1 - m.aimY) * 100) + '%';
+    placeOverlay(rcReticle, m.aimX, m.aimY);
   }
 
+  if (!m.hasFrame) {
+    rcMarkersEl.innerHTML = '';
+  } else {
+    renderMarkers(m.markers);
+  }
   renderPool(m.pool);
   renderTele(m.tele);
-  renderMarkers(m.markers);
+
+  state.markers = m.markers;
+  state.aimX = m.aimX;
+  state.aimY = m.aimY;
 }
 
-// ── Shell messages ──────────────────────────────────────────────────────────────────
 window.addEventListener('message', function(e) {
   const m = e.data;
   if (!m || m.mfd !== true) return;

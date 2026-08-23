@@ -1,48 +1,96 @@
 # NOXMFD Extension: Remote Control Missile Camera
 
-Adds a **MissileCamera: Remote Control** page to [NOXMFD](https://github.com/roke77/NOXMFD)'s MFD
-— live seeker feed plus remote-piloting controls (aim, throttle, afterburner, formation follow,
-vision mode, manual detonate) for missiles under [MissileCamera Remote
-Control](https://github.com/Mursisru/MissileCamera-Remote-Control)'s command. Built entirely
-through NOXMFD's public extension API (`NOXMFD.Api`, see NOXMFD's
-[`EXTENSIONS.md`](https://github.com/roke77/NOXMFD/blob/main/EXTENSIONS.md)) —
-it never touches NOXMFD's own source, and NOXMFD needs no changes to load it.
+[![NOXMFD](https://img.shields.io/badge/Requires-NOXMFD-blue)](https://github.com/roke77/NOXMFD)
+[![MissileCamera](https://img.shields.io/badge/Requires-MissileCamera-lightgrey)](https://github.com/Mursisru/MissileCamera)
+[![MissileCamera RC](https://img.shields.io/badge/Requires-MissileCamera%20RC-lightgrey)](https://github.com/Mursisru/MissileCamera-Remote-Control)
+[![Version](https://img.shields.io/badge/Version-0.1.1-green)](https://github.com/Mursisru/NOXMFD-Extension-Remote-Control-Missile-Camera/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Requires [MissileCamera](https://github.com/Mursisru/MissileCamera) and [MissileCamera Remote
-Control](https://github.com/Mursisru/MissileCamera-Remote-Control) installed alongside it — this
-extension is the display/control layer on top of those two mods, not a replacement for either.
+Adds a **MISSILE CAMERA** page to [NOXMFD](https://github.com/roke77/NOXMFD)'s browser MFD — live seeker MJPEG, HUD markers, telemetry, and remote-piloting controls for missiles under [MissileCamera Remote Control](https://github.com/Mursisru/MissileCamera-Remote-Control).
 
-**Credit:** the original remote-camera integration — including the `Bridge` API this extension
-talks to on the MissileCamera/RC side — was designed and built by
-[lupfine](https://github.com/lupfine). This repo is the same feature rebuilt as a standalone
-NOXMFD extension, so it ships as its own mod with its own release cycle instead of living inside
-NOXMFD's source tree.
+Built entirely through NOXMFD's public extension API (`NOXMFD.Api`, see [`EXTENSIONS.md`](https://github.com/roke77/NOXMFD/blob/main/EXTENSIONS.md)). This repo does **not** modify NOXMFD's source.
+
+> [!IMPORTANT]
+> **Install order:** BepInEx 5 → [MissileCamera](https://github.com/Mursisru/MissileCamera) → [MissileCamera: Remote Control](https://github.com/Mursisru/MissileCamera-Remote-Control) → [NOXMFD](https://github.com/roke77/NOXMFD) (≥ 0.23.0) → **`NOXMFD.RcMissileCamera.dll`**.
+
+---
+
+## Table of contents
+
+- [Features](#features)
+- [What's here](#whats-here)
+- [Using the page](#using-the-page)
+- [Configuration](#configuration)
+- [Building](#building)
+- [Installing](#installing)
+- [Cutting a release](#cutting-a-release)
+- [Changelog](#changelog)
+- [Credits](#credits)
+
+---
+
+## Features
+
+- **Live seeker MJPEG** at `/ext/rc-missile-camera/feed.mjpg` (only while this page is visible).
+- **Headless bridge capture** — drives MissileCamera `McBridge.RequestCapture` so the feed works without cockpit fullscreen (`K`).
+- **RC commands** — aim drag, TAKE / RELEASE, throttle nudge, **AB click-toggle**, formation, vision cycle, manual detonate (hold), missile pool picker.
+- **Telemetry overlay** — speed, alt, range, fuel, guidance, TTI; CombatHUD unit markers with configurable name labels (via MC bridge cfg).
+- **Tab isolation** — MJPEG pauses when you leave the MISSILE CAMERA page so RC does not leak onto MAP / WPN / other NOXMFD tabs.
+
+---
 
 ## What's here
 
 Mirrors NOXMFD's own `src/plugin` + `src/web` split.
 
-- `src/plugin/Plugin.cs`, `MissileCameraLifecycle.cs`, `MissileCameraCommands.cs`,
-  `MissileCameraTelemetry.cs`, `MissileCameraAssets.cs` — the plugin.
-- `src/plugin/McBridge.cs`, `RcBridge.cs`, `RcFeed.cs` — reflection-based soft dependencies on
-  MissileCamera and MissileCamera Remote Control, which don't know this plugin exists. Kept their
-  `Rc`/`Mc` names since those encode which of the two mods each one bridges to.
-- `src/web/missile-camera.html`, `missile-camera.css`, `missile-camera.js` — the MFD page itself,
-  served by NOXMFD and standardized on the extension telemetry contract (`{type:'ext', data}`),
-  sent to `/ext/rc-missile-camera/command`.
-- `lib/NOXMFD.dll` — a prebuilt copy of NOXMFD, referenced only so this project compiles
-  standalone. It is **not** shipped or loaded twice — see the build/install notes below.
+- `src/plugin/Plugin.cs`, `MissileCameraLifecycle.cs`, `MissileCameraCommands.cs`, `MissileCameraTelemetry.cs`, `MissileCameraAssets.cs` — BepInEx plugin.
+- `src/plugin/McBridge.cs`, `RcBridge.cs`, `RcFeed.cs` — reflection soft-deps on MissileCamera and MissileCamera Remote Control (neither mod references this extension).
+- `src/web/missile-camera.html`, `missile-camera.css`, `missile-camera.js` — MFD page UI; commands POST to `/ext/rc-missile-camera/command`.
+- `lib/NOXMFD.dll` — compile-time reference only (not shipped to players).
+
+---
+
+## Using the page
+
+1. Launch a player-owned missile (same rules as MissileCamera / RC).
+2. In NOXMFD, open **EXT → MISSILE CAMERA** (exact nav label depends on your NOXMFD layout).
+3. Press **TAKE** to remote-control (requires RC installed and a controllable RC clone unless `AllowAnyMunition` is on).
+4. Drag on the feed to aim; use **AB** (toggle), throttle buttons, **FORM**, **VIS**, **DETONATE** (hold) as needed.
+
+> [!TIP]
+> Cockpit fullscreen (`K`) is optional — this page is a full RC surface on its own. With MissileCamera `SuppressCockpitMfd=true` (default), the in-cockpit MFD missile panel hides while this page holds bridge capture.
+
+> [!NOTE]
+> **Preview-only mode:** if RC is missing or not ready, the page may still show the seeker feed but disables TAKE / control buttons.
+
+---
+
+## Configuration
+
+This extension has **no separate `.cfg` file**. It reads MissileCamera bridge tuning via reflection:
+
+| MissileCamera `[MissileCameraBridge]` key | Effect on this page |
+| :--- | :--- |
+| `Enabled` | Master bridge allow |
+| `FeedWidth` / `FeedHeight` | Seeker render aspect (default **960×540**) |
+| `StreamHz` / `StreamMaxDim` / `StreamJpegQuality` | MJPEG capture rate and size |
+| `MarkerLabels` | `All` / `SelectedOnly` / `None` for HUD name tags |
+| `SuppressCockpitMfd` | Hide duplicate cockpit MFD feed while this page is open |
+| `TelemetryInterval` / `MarkersInterval` / `PoolInterval` | Browser update rates |
+
+Edit in MissileCamera's Configuration Manager or `BepInEx/config/com.at747.missilecamera.bepinex.cfg`. See the [MissileCamera README — MissileCameraBridge](https://github.com/Mursisru/MissileCamera#missilecamerabridge).
+
+---
 
 ## Building
 
-Requires the .NET SDK and a Nuclear Option install with BepInEx 5 + NOXMFD already installed.
+Requires the .NET SDK and a Nuclear Option install with BepInEx 5 + NOXMFD already present.
 
-```
+```bash
 dotnet build -c Release
 ```
 
-If your game isn't at the default Steam path (`C:\Program Files (x86)\Steam\steamapps\common\Nuclear Option`),
-create a local `GameDir.props` next to `RcMissileCamera.csproj` (gitignored, machine-specific):
+If your game is not at the default Steam path, create a local `GameDir.props` next to `RcMissileCamera.csproj` (gitignored):
 
 ```xml
 <Project><PropertyGroup>
@@ -50,41 +98,52 @@ create a local `GameDir.props` next to `RcMissileCamera.csproj` (gitignored, mac
 </PropertyGroup></Project>
 ```
 
-The build copies `NOXMFD.RcMissileCamera.dll` straight into `<GameDir>\BepInEx\plugins`.
+Release build copies `NOXMFD.RcMissileCamera.dll` to `<GameDir>\BepInEx\plugins`.
+
+---
 
 ## Installing
 
-1. Install NOXMFD itself first (this plugin declares a hard `[BepInDependency]` on NOXMFD 0.23.0
-   or newer and won't load without it), plus MissileCamera and MissileCamera Remote Control.
-2. Drop `NOXMFD.RcMissileCamera.dll` into `BepInEx/plugins/`. Do **not** also copy `lib/NOXMFD.dll` there
-   — that's the same assembly NOXMFD's own plugin already loads; a second copy would double-load it.
-3. Launch the game. The MISSILE CAMERA page appears under NOXMFD's EXT nav automatically — no
-   NOXMFD changes needed.
+1. Install **NOXMFD** (≥ 0.23.0), **MissileCamera**, and **MissileCamera Remote Control**.
+2. Drop **`NOXMFD.RcMissileCamera.dll`** into `BepInEx/plugins/`. Do **not** copy `lib/NOXMFD.dll` — NOXMFD already loads it.
+3. Launch the game. **MISSILE CAMERA** appears under NOXMFD's EXT nav automatically.
+
+---
 
 ## Updating `lib/NOXMFD.dll`
 
-`lib/NOXMFD.dll` is just a build-time reference so this project compiles without NOXMFD's source
-tree present. If NOXMFD's `Api` surface changes, rebuild NOXMFD and replace `lib/NOXMFD.dll` with
-the new one.
+Replace `lib/NOXMFD.dll` with a fresh build from [NOXMFD](https://github.com/roke77/NOXMFD) when the `Api` surface changes so this project still compiles.
+
+---
 
 ## Cutting a release
 
-Same practices as NOXMFD itself:
+- Tag = bare semver (`0.1.0`, not `v0.1.0`). Match `<Version>` in `RcMissileCamera.csproj`.
+- Full release only (no `--prerelease`).
+- Title: `NOXMFD: RC Missile Camera Extension X.Y.Z`.
+- Attach `NOXMFD.RcMissileCamera_X.Y.Z.zip` containing `NOXMFD.RcMissileCamera/NOXMFD.RcMissileCamera.dll`.
 
-- Tag = **bare semver, no `v` prefix** (`0.1.0`, not `v0.1.0`). The `<Version>` in
-  `RcMissileCamera.csproj` and the tag should match.
-- Always a **full release** — never `--prerelease`, so it gets GitHub's Latest badge.
-- Title is `NOXMFD: RC Missile Camera Extension X.Y.Z`, passed explicitly via `--title` — never
-  the bare tag.
-- Every release **must have `NOXMFD.RcMissileCamera_X.Y.Z.zip` attached**, containing a single
-  `NOXMFD.RcMissileCamera/NOXMFD.RcMissileCamera.dll`. Verify with:
-  `gh release view <tag> --json assets -q '.assets[].name'`
-- Release notes are a tight changelog of the actual changes only — no install/how-to text (that
-  belongs in this README).
-
-```
+```bash
 dotnet build -c Release
-# stage NOXMFD.RcMissileCamera.dll under NOXMFD.RcMissileCamera\, zip it as
-# NOXMFD.RcMissileCamera_X.Y.Z.zip
-gh release create X.Y.Z --title "NOXMFD: RC Missile Camera Extension X.Y.Z" --notes "..." NOXMFD.RcMissileCamera_X.Y.Z.zip
+gh release create X.Y.Z --title "NOXMFD: RC Missile Camera Extension X.Y.Z" --notes-file CHANGELOG.md NOXMFD.RcMissileCamera_X.Y.Z.zip
 ```
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
+
+---
+
+## Credits
+
+### Thanks to project contributors
+
+[![Contributors](https://contrib.rocks/image?repo=Mursisru/NOXMFD-Extension-Remote-Control-Missile-Camera)](https://github.com/Mursisru/NOXMFD-Extension-Remote-Control-Missile-Camera/graphs/contributors)
+
+- **[Mursisru](https://github.com/Mursisru)** — this extension, MissileCamera, and MissileCamera: Remote Control
+- **[roke77](https://github.com/roke77)** — [NOXMFD](https://github.com/roke77/NOXMFD) host and extension API
+- **[lupfine](https://github.com/lupfine)** — original remote-camera / Bridge integration design
+
+The Bridge APIs on the MissileCamera and RC side were shaped for external MFD consumers; this repo is a standalone fork of that integration so it ships on its own release cycle instead of living inside NOXMFD's tree.

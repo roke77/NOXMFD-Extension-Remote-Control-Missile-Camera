@@ -10,15 +10,22 @@ namespace RcMissileCamera
     {
         private readonly RcFeed _feed = new RcFeed();
         private float _telemetryTimer;
-        private const float TelemetryInterval = 0.1f;   // 10 Hz — matches NOXMFD's own frame cadence
 
         private void Update()
         {
+            // Level-triggered bool — keep fresh every frame while the page wants MJPEG.
+            bool wants = NOXMFD.Api.WantsMjpegFrames(Plugin.ExtId);
+            if (wants && McBridge.Available)
+                McBridge.RequestCapture(true);
+            else
+                McBridge.RequestCapture(false);
+
             float dt = Time.deltaTime;
             _feed.Tick(dt);
 
             _telemetryTimer += dt;
-            if (_telemetryTimer >= TelemetryInterval)
+            float teleInterval = UnityEngine.Mathf.Clamp(McBridge.TelemetryInterval, 0.05f, 1f);
+            if (_telemetryTimer >= teleInterval)
             {
                 _telemetryTimer = 0f;
                 MissileCameraTelemetry.Publish(_feed);

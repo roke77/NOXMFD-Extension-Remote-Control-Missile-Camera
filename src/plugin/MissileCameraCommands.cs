@@ -36,7 +36,7 @@ namespace RcMissileCamera
                 case "throttle-adjust": RcBridge.AdjustThrottle(env.v); break;
                 case "boost":           RcBridge.SetBoostHeld(env.on); break;
                 case "take":            RcBridge.TakeNearest(); break;
-                case "take-at":         RcBridge.TakeAt(env.index); break;
+                case "take-at":         RcBridge.RefreshPool(); RcBridge.TakeAt(env.index); break;
                 case "release":         RcBridge.Release(); break;
                 case "formation":       RcBridge.ToggleFormationFollow(); break;
                 case "detonate":        RcBridge.ManualDetonate(); break;

@@ -27,10 +27,25 @@ namespace RcMissileCamera
         private static Func<string>?  _markersJson;
         private static Action?        _cycleVisionMode;
         private static Action<bool>?  _requestCapture;
+        private static Func<bool>?    _isCaptureActive;
+        private static Func<int>?     _streamHz;
+        private static Func<int>?     _streamMaxDim;
+        private static Func<int>?     _streamJpegQuality;
+        private static Func<float>?   _telemetryInterval;
+        private static Func<float>?   _markersInterval;
+        private static Func<float>?   _poolInterval;
 
         internal static bool Available => EnsureResolved();
 
         internal static bool    HasTrackableMissile => Available && _hasTrackableMissile!();
+        internal static bool    IsCaptureActive       => Available && _isCaptureActive != null && _isCaptureActive!();
+
+        internal static int  StreamHz           => Available && _streamHz != null ? UnityEngine.Mathf.Clamp(_streamHz(), 4, 30) : 10;
+        internal static int  StreamMaxDim         => Available && _streamMaxDim != null ? UnityEngine.Mathf.Clamp(_streamMaxDim(), 240, 1080) : 480;
+        internal static int  StreamJpegQuality    => Available && _streamJpegQuality != null ? UnityEngine.Mathf.Clamp(_streamJpegQuality(), 20, 90) : 42;
+        internal static float TelemetryInterval   => Available && _telemetryInterval != null ? _telemetryInterval() : 0.15f;
+        internal static float MarkersInterval     => Available && _markersInterval != null ? _markersInterval() : 0.2f;
+        internal static float PoolInterval        => Available && _poolInterval != null ? _poolInterval() : 0.5f;
         internal static Camera? FeedCamera           => Available ? _feedCamera!() : null;
 
         // Prefer this over FeedCamera.targetTexture — see McBridge.cs (base mod) for why: the
@@ -95,6 +110,13 @@ namespace RcMissileCamera
                 _markersJson         = BindFunc<string>(t, "MarkersJson");
                 _cycleVisionMode     = BindAction(t, "CycleVisionMode");
                 _requestCapture      = BindAction1<bool>(t, "RequestCapture");
+                _isCaptureActive     = BindGet<bool>(t, "IsCaptureActive");
+                _streamHz            = BindGet<int>(t, "ExtensionStreamHz");
+                _streamMaxDim        = BindGet<int>(t, "ExtensionStreamMaxDim");
+                _streamJpegQuality   = BindGet<int>(t, "ExtensionStreamJpegQuality");
+                _telemetryInterval   = BindGet<float>(t, "ExtensionTelemetryInterval");
+                _markersInterval     = BindGet<float>(t, "ExtensionMarkersInterval");
+                _poolInterval        = BindGet<float>(t, "ExtensionPoolInterval");
 
                 _resolved = _hasTrackableMissile != null && _feedCamera != null
                     && _feedTexture != null && _telemetryJson != null && _markersJson != null

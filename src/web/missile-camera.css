@@ -17,14 +17,17 @@
 .rc-panel:not(.has-rc) .rc-throttle,
 .rc-panel:not(.has-rc) .rc-actions,
 .rc-panel:not(.has-rc) .rc-pool { display: none; }
+.rc-panel.has-rc:not(.rc-ready) .rc-throttle,
+.rc-panel.has-rc:not(.rc-ready) .rc-actions,
+.rc-panel.has-rc:not(.rc-ready) .rc-pool,
+.rc-panel.has-rc:not(.rc-ready) .rc-status { display: none; }
 .rc-panel.has-rc .rc-empty { display: none; }
+.rc-panel.has-rc:not(.has-feed):not(.rc-ready) .rc-empty { display: flex; }
 
 .rc-surface {
   position: absolute;
-  top: 0; left: 0;
-  width: 100%;
-  height: 100%;
-  touch-action: none;   /* the surface owns drag — no browser scroll/zoom gestures to fight */
+  inset: 0;
+  touch-action: none;
   cursor: crosshair;
 }
 .rc-img {
@@ -32,17 +35,17 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
+  object-position: center;
   background: #000;
-  pointer-events: none;   /* drags are handled by .rc-surface, not the <img> itself */
+  pointer-events: none;
 }
 /* No feed yet (fullscreen not active / camera not live) — keep the black box, drop the stale
    frame MJPEG would otherwise keep buffered in the element (same reasoning as TGP). */
 .rc-panel:not(.has-feed) .rc-img { visibility: hidden; }
 
 .rc-reticle {
-  /* .pad-cursor already gives position/size/crosshair sprite/will-change — this just turns it
-     on and lifts it above the feed image. */
   display: block;
+  transform: translate(-50%, -50%);
 }
 
 .rc-status {
@@ -73,9 +76,7 @@
   padding: 6px 10px;
   border-radius: 2px;
   /* DETONATE's 600ms pointerdown-hold otherwise races iOS Safari's own long-press gesture
-     (context menu / text-selection callout, ~500-750ms) — whichever wins first either fires the
-     hold timer or cancels the pointer sequence out from under it. Suppress the native gesture on
-     every button here, not just DETONATE, since AB is also a hold. */
+     (context menu / text-selection callout, ~500-750ms). AB is click-toggle. */
   touch-action: manipulation;
   -webkit-touch-callout: none;
   -webkit-user-select: none;

@@ -13,11 +13,8 @@ namespace RcMissileCamera
     // MissileCameraTelemetry, torn down from MissileCameraLifecycle.OnDestroy.
     internal class RcFeed
     {
-        // 20 Hz: this is the pilot's direct aiming view (vs. TGP's 15 Hz targeting reference), so
-        // it gets a bit more headroom for smooth tracking of a fast-moving reticle.
-        internal const float Interval    = 1f / 20f;
-        private  const int   MaxDim      = 720;
-        private  const int   JpegQuality = 55;
+        private  const int   FallbackMaxDim      = 480;
+        private  const int   FallbackJpegQuality = 42;
 
         private float          _timer;
         private RenderTexture? _rt;
@@ -33,11 +30,15 @@ namespace RcMissileCamera
 
         public void Tick(float dt)
         {
+            float interval = 1f / UnityEngine.Mathf.Max(McBridge.StreamHz, 4);
             _timer += dt;
-            if (_timer < Interval) return;
+            if (_timer < interval) return;
             _timer = 0f;
             CaptureFrame();
         }
+
+        private int MaxDim => McBridge.Available ? McBridge.StreamMaxDim : FallbackMaxDim;
+        private int JpegQuality => McBridge.Available ? McBridge.StreamJpegQuality : FallbackJpegQuality;
 
         private void CaptureFrame()
         {
@@ -48,16 +49,16 @@ namespace RcMissileCamera
             // just here.
             if (!NOXMFD.Api.WantsMjpegFrames(Plugin.ExtId))
             {
-                McBridge.RequestCapture(false);
                 if (_engaged) Disengage();
                 return;
             }
 
-            // Ask the BASE "Missile Camera" mod to keep its feed pipeline live for us — this is
-            // what removes the need for the pilot to enter fullscreen or have the cockpit MFD panel
-            // bound (docs/rc-page.md). Level-triggered, so this runs every tick we still want
-            // frames; safe no-op if that mod isn't installed or is a version without Bridge.
-            McBridge.RequestCapture(true);
+            if (!McBridge.Available)
+            {
+                NOXMFD.Api.ClearMjpegFrame(Plugin.ExtId);
+                _active = false;
+                return;
+            }
 
             // Prefer the base mod's own Bridge texture (works headless, per above — and is the
             // actual authoritative output, not read off the camera mid-render — see McBridge.cs).
@@ -69,7 +70,7 @@ namespace RcMissileCamera
             if (McBridge.Available)
             {
                 src = McBridge.FeedTexture;
-                haveCam = true;
+                haveCam = src != null || McBridge.HasTrackableMissile;
             }
             else
             {
@@ -105,19 +106,20 @@ namespace RcMissileCamera
             int sh = Mathf.Max(1, src.height);
             int targetW, targetH;
             int maxSide = Mathf.Max(sw, sh);
-            if (maxSide <= MaxDim)
+            int capMax = MaxDim;
+            if (maxSide <= capMax)
             {
                 targetW = sw; targetH = sh;
             }
             else if (sw >= sh)
             {
-                targetW = MaxDim;
-                targetH = Mathf.Max(1, Mathf.RoundToInt(MaxDim * (float)sh / sw));
+                targetW = capMax;
+                targetH = Mathf.Max(1, Mathf.RoundToInt(capMax * (float)sh / sw));
             }
             else
             {
-                targetH = MaxDim;
-                targetW = Mathf.Max(1, Mathf.RoundToInt(MaxDim * (float)sw / sh));
+                targetH = capMax;
+                targetW = Mathf.Max(1, Mathf.RoundToInt(capMax * (float)sw / sh));
             }
 
             if (!_srcLogged)
@@ -163,7 +165,11 @@ namespace RcMissileCamera
         private void OnReadbackComplete(AsyncGPUReadbackRequest request, int w, int h)
         {
             _readbackInFlight = false;
-            if (request.hasError) return;
+            if (request.hasError)
+            {
+                _active = false;
+                return;
+            }
             if (!NOXMFD.Api.WantsMjpegFrames(Plugin.ExtId)) return;     // disengaged while in flight
             if (_tex == null || _tex.width != w || _tex.height != h) return;
 
