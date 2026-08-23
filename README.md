@@ -3,7 +3,7 @@
 [![NOXMFD](https://img.shields.io/badge/Requires-NOXMFD-blue)](https://github.com/roke77/NOXMFD)
 [![MissileCamera](https://img.shields.io/badge/Requires-MissileCamera-lightgrey)](https://github.com/Mursisru/MissileCamera)
 [![MissileCamera RC](https://img.shields.io/badge/Requires-MissileCamera%20RC-lightgrey)](https://github.com/Mursisru/MissileCamera-Remote-Control)
-[![Version](https://img.shields.io/badge/Version-0.1.1-green)](https://github.com/Mursisru/NOXMFD-Extension-Remote-Control-Missile-Camera/releases)
+[![Version](https://img.shields.io/badge/Version-0.1.2-green)](https://github.com/roke77/NOXMFD-Extension-Remote-Control-Missile-Camera/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Adds a **MISSILE CAMERA** page to [NOXMFD](https://github.com/roke77/NOXMFD)'s browser MFD — live seeker MJPEG, HUD markers, telemetry, and remote-piloting controls for missiles under [MissileCamera Remote Control](https://github.com/Mursisru/MissileCamera-Remote-Control).
@@ -67,18 +67,16 @@ Mirrors NOXMFD's own `src/plugin` + `src/web` split.
 
 ## Configuration
 
-This extension has **no separate `.cfg` file**. It reads MissileCamera bridge tuning via reflection:
+This extension has **no separate `.cfg` file**. It reads MissileCamera bridge tuning via reflection off `MissileCamera.Bridge.McBridge`'s `Extension*`-prefixed properties:
 
-| MissileCamera `[MissileCameraBridge]` key | Effect on this page |
+| `McBridge` property | Effect on this page |
 | :--- | :--- |
-| `Enabled` | Master bridge allow |
-| `FeedWidth` / `FeedHeight` | Seeker render aspect (default **960×540**) |
-| `StreamHz` / `StreamMaxDim` / `StreamJpegQuality` | MJPEG capture rate and size |
-| `MarkerLabels` | `All` / `SelectedOnly` / `None` for HUD name tags |
-| `SuppressCockpitMfd` | Hide duplicate cockpit MFD feed while this page is open |
-| `TelemetryInterval` / `MarkersInterval` / `PoolInterval` | Browser update rates |
+| `ExtensionStreamHz` | MJPEG capture rate (4–30, default 10) |
+| `ExtensionStreamMaxDim` | MJPEG capture size (240–1080px, default 480) |
+| `ExtensionStreamJpegQuality` | MJPEG compression quality (20–90, default 42) |
+| `ExtensionTelemetryInterval` / `ExtensionMarkersInterval` / `ExtensionPoolInterval` | Browser update rates |
 
-Edit in MissileCamera's Configuration Manager or `BepInEx/config/com.at747.missilecamera.bepinex.cfg`. See the [MissileCamera README — MissileCameraBridge](https://github.com/Mursisru/MissileCamera#missilecamerabridge).
+As of MissileCamera 2.1.0-pre.1, these are hardcoded values on the Bridge, not BepInEx `ConfigEntry<T>`s — there is currently no `.cfg` key that changes them, despite the wide clamp ranges above suggesting they were built to be tunable.
 
 ---
 
@@ -140,7 +138,7 @@ See [CHANGELOG.md](CHANGELOG.md).
 
 ### Thanks to project contributors
 
-[![Contributors](https://contrib.rocks/image?repo=Mursisru/NOXMFD-Extension-Remote-Control-Missile-Camera)](https://github.com/Mursisru/NOXMFD-Extension-Remote-Control-Missile-Camera/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=roke77/NOXMFD-Extension-Remote-Control-Missile-Camera)](https://github.com/roke77/NOXMFD-Extension-Remote-Control-Missile-Camera/graphs/contributors)
 
 - **[Mursisru](https://github.com/Mursisru)** — this extension, MissileCamera, and MissileCamera: Remote Control
 - **[roke77](https://github.com/roke77)** — [NOXMFD](https://github.com/roke77/NOXMFD) host and extension API

@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-08-23
+
 ### Added
 
 - **Tab-aware MJPEG** — pauses `/ext/rc-missile-camera/feed.mjpg` when the page iframe is hidden so bridge capture and RC UI stay on the MISSILE CAMERA tab only.
