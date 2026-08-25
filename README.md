@@ -140,8 +140,8 @@ See [CHANGELOG.md](CHANGELOG.md).
 
 [![Contributors](https://contrib.rocks/image?repo=roke77/NOXMFD-Extension-Remote-Control-Missile-Camera)](https://github.com/roke77/NOXMFD-Extension-Remote-Control-Missile-Camera/graphs/contributors)
 
+- **[lupfine](https://github.com/lupfine)** — Original remote-camera / Bridge integration design
 - **[Mursisru](https://github.com/Mursisru)** — this extension, MissileCamera, and MissileCamera: Remote Control
 - **[roke77](https://github.com/roke77)** — [NOXMFD](https://github.com/roke77/NOXMFD) host and extension API
-- **[lupfine](https://github.com/lupfine)** — original remote-camera / Bridge integration design
 
 The Bridge APIs on the MissileCamera and RC side were shaped for external MFD consumers; this repo is a standalone fork of that integration so it ships on its own release cycle instead of living inside NOXMFD's tree.
