@@ -3,6 +3,7 @@
 function postCmd(cmd, args) {
   return fetch('/ext/rc-missile-camera/command', {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(Object.assign({ cmd: cmd }, args || {})),
   });
 }

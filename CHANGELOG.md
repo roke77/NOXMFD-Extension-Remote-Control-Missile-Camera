@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-09-19
+
+### Fixed
+
+- **RC commands silently rejected** — `postCmd()` posted to `/ext/rc-missile-camera/command` without a `Content-Type` header, so the browser defaulted to `text/plain`. NOXMFD's command endpoint has required an exact `application/json` Content-Type since its 2026-08-27 hardening, so every command (TAKE, RELEASE, aim, throttle, AB, FORM, VIS, DETONATE) was being rejected with 415 and silently dropped. Fixed by explicitly setting `Content-Type: application/json` on the request.
+
 ## [0.1.3] — 2026-09-19
 
 ### Changed
