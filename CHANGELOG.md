@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-09-19
+
+### Changed
+
+- **RcFeed video pipeline** — migrated JPEG compression to a dedicated background worker thread ("RcMissileCamera JPEG") using `AutoResetEvent` signalling, matching the proven core `TgpFeed` architecture.
+- **Frame buffer capture** — eliminated managed `Texture2D` allocations, texture data uploads, and synchronous encoding in favour of a fast `NativeArray` memory copy directly upon readback completion.
+
+### Fixed
+
+- **Cyclic frame time stutter** — eliminated periodic rendering freezes and garbage collection pauses during active weapon tracking and remote camera broadcasts.
+- **Lifecycle and thread termination** — added generation staleness guards (`_captureGeneration`) with `InvalidatePendingWork()` to discard orphaned frames across session resets, and bound `MissileCameraLifecycle.OnDestroy` to safely terminate the background encoder thread.
+
 ## [0.1.2] — 2026-08-23
 
 ### Added

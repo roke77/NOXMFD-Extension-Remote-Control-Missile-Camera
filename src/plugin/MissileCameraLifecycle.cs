@@ -34,7 +34,7 @@ namespace RcMissileCamera
 
         private void OnDestroy()
         {
-            _feed.Disengage();
+            _feed.Shutdown();
         }
     }
 }
